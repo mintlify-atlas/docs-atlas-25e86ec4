@@ -1,0 +1,370 @@
+---
+title: "Configure the Maltrail sensor"
+description: "Reference for every option in the [Sensor] and [All] sections of maltrail.conf, covering capture, heuristics, logging, and remote forwarding."
+---
+
+The sensor reads its configuration from `maltrail.conf` at startup. Options in the `[Sensor]` section control traffic capture, trail updates, heuristics, and event forwarding. Options in the `[All]` section apply to both the sensor and the server. Any option value can be overridden at runtime with the environment variable `MALTRAIL_<OPTION_NAME>`.
+
+## Processing and CPU
+
+<AccordionGroup>
+  <Accordion title="PROCESS_COUNT">
+    **Default:** `1`
+
+    Number of worker processes to spawn. Set to `1` to run everything on a single core. Set to a higher integer to use multiple cores: one core handles packet capture exclusively, and the remaining cores handle packet processing.
+
+    The legacy `USE_MULTIPROCESSING` switch (which used all available cores) is deprecated. Use `PROCESS_COUNT` instead.
+
+    ```text maltrail.conf
+    PROCESS_COUNT 4
+    ```
+  </Accordion>
+
+  <Accordion title="DISABLE_CPU_AFFINITY">
+    **Default:** `false`
+
+    When `false`, Maltrail uses `schedtool` to pin processes to specific CPU cores, reducing context-switching overhead. Set to `true` if `schedtool` is not installed or if affinity conflicts with other workloads on the host.
+
+    ```text maltrail.conf
+    DISABLE_CPU_AFFINITY false
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Trail updates
+
+<AccordionGroup>
+  <Accordion title="USE_FEED_UPDATES">
+    **Default:** `true`
+
+    Controls whether trails are refreshed from remote feeds during the update cycle. Set to `false` to rely solely on the static trail definitions bundled with the installation.
+
+    ```text maltrail.conf
+    USE_FEED_UPDATES true
+    ```
+  </Accordion>
+
+  <Accordion title="DISABLED_FEEDS">
+    **Default:** `turris, ciarmy, policeman, myip, alienvault`
+
+    Comma-separated list of feed names to skip during updates. Each name corresponds to a `.py` file inside the `trails/feeds/` directory. The defaults exclude feeds that have historically produced high false-positive rates.
+
+    ```text maltrail.conf
+    DISABLED_FEEDS turris, ciarmy, policeman, myip, alienvault
+    ```
+  </Accordion>
+
+  <Accordion title="IP_MINIMUM_FEEDS">
+    **Default:** `3`
+
+    An IP address from dynamic feeds is only included in the trail set if it appears on at least this many distinct feeds. Static IP trails are always included regardless of this threshold.
+
+    ```text maltrail.conf
+    IP_MINIMUM_FEEDS 3
+    ```
+  </Accordion>
+
+  <Accordion title="DISABLED_TRAILS_INFO_REGEX">
+    **Default:** *(unset)*
+
+    A regular expression evaluated against the `info` field of each trail. Any trail whose `info` value matches is excluded from the active trail set. Useful for suppressing entire categories of detections.
+
+    ```text maltrail.conf
+    DISABLED_TRAILS_INFO_REGEX known attacker|tor exit node
+    ```
+  </Accordion>
+
+  <Accordion title="UPDATE_PERIOD">
+    **Default:** `86400`
+
+    Number of seconds between automatic trail update cycles. The default value of `86400` equals one day. Both the sensor and the server participate in trail updates.
+
+    ```text maltrail.conf
+    UPDATE_PERIOD 86400
+    ```
+  </Accordion>
+
+  <Accordion title="CUSTOM_TRAILS_URL">
+    **Default:** *(unset)*
+
+    URL of a remote custom trail file to fetch during each update cycle. The file must follow the same plain-text format used by files in `CUSTOM_TRAILS_DIR`.
+
+    ```text maltrail.conf
+    CUSTOM_TRAILS_URL http://www.example.com/custom.txt
+    ```
+  </Accordion>
+
+  <Accordion title="CUSTOM_TRAILS_DIR">
+    **Default:** `./trails/custom`
+
+    Path to a local directory containing user-defined trail files (`*.txt`). All `.txt` files in this directory are loaded on each update cycle.
+
+    ```text maltrail.conf
+    CUSTOM_TRAILS_DIR ./trails/custom
+    ```
+  </Accordion>
+
+  <Accordion title="UPDATE_SERVER">
+    **Default:** *(unset)*
+
+    Remote URL from which the sensor pulls its compiled trail definitions (e.g. `http://192.168.2.107:8338/trails`). When set, trails are fetched from this URL rather than built locally. The server must have `USE_SERVER_UPDATE_TRAILS true` enabled.
+
+    ```text maltrail.conf
+    UPDATE_SERVER http://192.168.2.107:8338/trails
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Capture
+
+<AccordionGroup>
+  <Accordion title="MONITOR_INTERFACE">
+    **Default:** `any`
+
+    Name of the network interface to monitor (e.g. `eth0`, `ens3`). Use `any` to capture from all interfaces simultaneously, if the operating system supports it.
+
+    ```text maltrail.conf
+    MONITOR_INTERFACE any
+    ```
+  </Accordion>
+
+  <Accordion title="CAPTURE_FILTER">
+    **Default:** `udp or icmp or (tcp and (tcp[tcpflags] == tcp-syn or port 80 or port 1080 or port 3128 or port 8000 or port 8080 or port 8118))`
+
+    A `tcpdump`-compatible BPF filter applied to raw packet capture. Packets that do not match the filter are discarded before processing, reducing CPU and memory overhead.
+
+    ```text maltrail.conf
+    # Capture all IP traffic
+    CAPTURE_FILTER ip or ip6
+    ```
+  </Accordion>
+
+  <Accordion title="CAPTURE_BUFFER">
+    **Default:** `10%`
+
+    Total memory allocated for the multiprocessing ring buffer used to pass captured packets between the capture process and the processing processes. Accepts an absolute size (e.g. `512MB`) or a percentage of total physical RAM (e.g. `10%`).
+
+    <Note>
+      If the host's total physical memory cannot be determined automatically, you must use an absolute byte value such as `512MB`.
+    </Note>
+
+    ```text maltrail.conf
+    CAPTURE_BUFFER 10%
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Detection
+
+<AccordionGroup>
+  <Accordion title="USE_HEURISTICS">
+    **Default:** `true`
+
+    Enables heuristic detection methods such as long domain names, excessive `NXDOMAIN` responses, direct executable downloads, and port scanning patterns. Heuristics can produce false positives. Set to `false` to restrict detection to known-bad trails only.
+
+    ```text maltrail.conf
+    USE_HEURISTICS true
+    ```
+  </Accordion>
+
+  <Accordion title="CHECK_MISSING_HOST">
+    **Default:** `false`
+
+    When `true`, the sensor also generates events for HTTP requests that are missing the `Host` header. This can surface certain scanning tools but introduces additional false positives.
+
+    ```text maltrail.conf
+    CHECK_MISSING_HOST false
+    ```
+  </Accordion>
+
+  <Accordion title="CHECK_HOST_DOMAINS">
+    **Default:** `false`
+
+    When `true`, the sensor checks the value of the HTTP `Host` header against the DNS trail list in addition to the standard non-HTTP checks. Enabling this increases the total volume of events.
+
+    ```text maltrail.conf
+    CHECK_HOST_DOMAINS false
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Event forwarding
+
+<AccordionGroup>
+  <Accordion title="SENSOR_NAME">
+    **Default:** `$HOSTNAME`
+
+    Name written into the `sensor_name` field of every event produced by this sensor. Use a descriptive value when deploying multiple sensors so events can be correlated by origin.
+
+    ```text maltrail.conf
+    SENSOR_NAME $HOSTNAME
+    ```
+  </Accordion>
+
+  <Accordion title="LOG_SERVER">
+    **Default:** *(unset)*
+
+    Address and UDP port of a remote Maltrail server instance (e.g. `192.168.2.107:8337`). When set, events are sent to the server over UDP instead of being written to the local log directory. IPv6 link-local addresses are supported (e.g. `[fe80::12c3:7bff:fe6d:cf9b%eno1]:8337`).
+
+    ```text maltrail.conf
+    LOG_SERVER 192.168.2.107:8337
+    ```
+  </Accordion>
+
+  <Accordion title="SYSLOG_SERVER">
+    **Default:** *(unset)*
+
+    Address and UDP port of a syslog receiver. When set, events are forwarded in **CEF (Common Event Format)** in addition to (or instead of) local storage.
+
+    Example CEF event:
+
+    ```text
+    Dec 24 15:05:55 beast CEF:0|Maltrail|sensor|0.27.68|2020-12-24|andromeda (malware)|2|src=192.168.5.137 spt=60453 dst=8.8.8.8 dpt=53 trail=morphed.ru ref=(static)
+    ```
+
+    CEF severity values: `0` = low, `1` = medium, `2` = high.
+
+    ```text maltrail.conf
+    SYSLOG_SERVER 192.168.2.107:514
+    ```
+  </Accordion>
+
+  <Accordion title="LOGSTASH_SERVER">
+    **Default:** *(unset)*
+
+    Address and UDP port of a Logstash (or compatible) receiver. When set, events are forwarded as **JSON** objects over UDP.
+
+    Example JSON event:
+
+    ```json
+    {
+      "timestamp": 1608818692,
+      "sensor": "beast",
+      "severity": "high",
+      "src_ip": "192.168.5.137",
+      "src_port": 48949,
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "proto": "UDP",
+      "type": "DNS",
+      "trail": "morphed.ru",
+      "info": "andromeda (malware)",
+      "reference": "(static)"
+    }
+    ```
+
+    ```text maltrail.conf
+    LOGSTASH_SERVER 192.168.2.107:5000
+    ```
+  </Accordion>
+
+  <Accordion title="REMOTE_SEVERITY_REGEX">
+    **Default:** *(see maltrail.conf)*
+
+    Regular expression with named capture groups `high`, `medium`, and `low` used to assign a severity level when forwarding events to `SYSLOG_SERVER` or `LOGSTASH_SERVER`. The default pattern classifies custom and malware traffic as high, potential malware sites as medium, and scanners/attackers as low.
+
+    ```text maltrail.conf
+    REMOTE_SEVERITY_REGEX (?P<high>(remote )?custom\)|malware(?! (distribution|site))...
+    ```
+  </Accordion>
+
+  <Accordion title="DISABLE_LOCAL_LOG_STORAGE">
+    **Default:** `false`
+
+    When `true`, the sensor does not write events to the local log directory and relies exclusively on `LOG_SERVER` or `SYSLOG_SERVER` for event storage. If this is enabled without a remote target configured, events are printed to the console.
+
+    ```text maltrail.conf
+    DISABLE_LOCAL_LOG_STORAGE false
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Filtering and whitelisting
+
+<AccordionGroup>
+  <Accordion title="USER_WHITELIST">
+    **Default:** *(unset)*
+
+    Path to a plain-text file containing IP addresses, CIDR ranges, or domain names that should never trigger events. A built-in whitelist is also loaded from `misc/whitelist.txt`. Entries in this file supplement rather than replace the built-in list.
+
+    ```text maltrail.conf
+    USER_WHITELIST /etc/maltrail/whitelist.txt
+    ```
+  </Accordion>
+
+  <Accordion title="USER_IGNORELIST">
+    **Default:** *(unset)*
+
+    Path to a plain-text file with rules for suppressing specific events after they are detected. Each rule is a semicolon-delimited tuple `src_ip;src_port;dst_ip;dst_port`. See `misc/ignore_events.txt` for the format.
+
+    ```text maltrail.conf
+    USER_IGNORELIST misc/ignore_events.txt
+    ```
+  </Accordion>
+
+  <Accordion title="IGNORE_EVENTS_REGEX">
+    **Default:** *(unset)*
+
+    Regular expression evaluated against the full text of each event entry. Matching events are discarded before being written or forwarded. Useful for quick exclusions without managing a separate file.
+
+    ```text maltrail.conf
+    IGNORE_EVENTS_REGEX sql injection|long domain|117.21.225.3|sinkhole
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Global options (`[All]` section)
+
+These options apply to both the sensor and the server.
+
+<AccordionGroup>
+  <Accordion title="LOG_DIR">
+    **Default:** `$SYSTEM_LOG_DIR/maltrail` (`/var/log/maltrail` on Linux)
+
+    Directory where event log files are stored. Log files are named by date (e.g. `2024-01-15.log`) and written in space-delimited CSV format with fields: `time sensor src_ip src_port dst_ip dst_port proto trail_type trail trail_info reference`.
+
+    ```text maltrail.conf
+    LOG_DIR /var/log/maltrail
+    ```
+  </Accordion>
+
+  <Accordion title="SHOW_DEBUG">
+    **Default:** `false`
+
+    When `true`, additional debug output is written to the console. Can also be enabled by setting the environment variable `MALTRAIL_DREI=1`.
+
+    ```text maltrail.conf
+    SHOW_DEBUG false
+    ```
+  </Accordion>
+
+  <Accordion title="PROXY_ADDRESS">
+    **Default:** *(unset)*
+
+    HTTP or HTTPS proxy address used for all outbound HTTP requests made by the sensor or server (trail updates, feed fetches, etc.).
+
+    ```text maltrail.conf
+    PROXY_ADDRESS http://192.168.5.101:8118
+    ```
+  </Accordion>
+
+  <Accordion title="DISABLE_CHECK_SUDO">
+    **Default:** *(unset / false)*
+
+    Disables the check for root or administrator privileges at startup. Useful when the Python binary has been granted raw network capabilities via `setcap` (e.g. `setcap 'CAP_NET_RAW+eip CAP_NET_ADMIN+eip' /bin/python`).
+
+    ```text maltrail.conf
+    DISABLE_CHECK_SUDO true
+    ```
+  </Accordion>
+
+  <Accordion title="TRAILS_FILE">
+    **Default:** `~/.maltrail/trails.csv`
+
+    Overrides the path where the compiled trail set is stored. Change this if the home directory is on a slow filesystem or if you want to share a single trail file across multiple processes.
+
+    ```text maltrail.conf
+    TRAILS_FILE /etc/maltrail.csv
+    ```
+  </Accordion>
+</AccordionGroup>

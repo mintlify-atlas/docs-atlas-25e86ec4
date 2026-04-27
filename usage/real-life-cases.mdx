@@ -1,0 +1,116 @@
+---
+title: "Real-world threat detection examples"
+description: "Explore real-life threat scenarios detected by Maltrail, including mass scans, malware C&C connections, brute force attacks, DNS attacks, and data leakage."
+---
+
+Maltrail detects a wide range of threats by combining blacklist feeds, static trail definitions, and heuristic analysis. The following cases illustrate what specific threat types look like in the reporting interface and how to interpret and investigate each one. These are drawn from real-world examples documented in the Maltrail project.
+
+<AccordionGroup>
+  <Accordion title="Mass scans">
+    Organizations like [Shodan](https://www.shodan.io/) and [ZoomEye](http://www.zoomeye.org/) scan the entire IPv4 range (`0.0.0.0/0`) on a daily basis and make results freely available through their search engines. Maltrail detects these scans because the scanner IP addresses are blacklisted in feeds such as `cinsscore.com` and `alienvault.com`.
+
+    In the event table, a mass scan typically appears as a single threat row with a single `src_ip` and a large number of entries in the `dst_ip` and `dst_port` bubble columns — reflecting all the addresses and ports targeted. The `reference` column identifies which feed flagged the scanning IP.
+
+    A common variant is scanning for a specific port across the entire Internet, such as TCP port 443 following the Heartbleed disclosure, or UDP port 5060 (SIP) targeting misconfigured VoIP devices. In these cases, the `dst_port` column contains a single repeated value while `dst_ip` holds a large list of targets.
+
+    To investigate, hover over the `trail` column value (the scanner's IP) to see searX search results confirming its identity. Hover over `src_ip` to get reverse DNS and WHOIS data showing the scanner's organization.
+  </Accordion>
+
+  <Accordion title="Anonymous attackers (Tor)">
+    Maltrail tracks Tor exit node IP addresses using publicly available Tor exit node lists. When a connection originates from a known Tor exit node, it is flagged as a potential anonymous attacker.
+
+    A typical example is an attacker using Tor to make repeated HTTP connection requests to a target inside your organization's IP range — for example, 171 connection requests within a 10-minute window. In the event table, the `src_ip` is a known Tor exit node, the `trail` is that same IP, and the `info` column identifies the nature of the activity.
+
+    Because Tor exit nodes are used by many different users, treat these events as indicators requiring further investigation rather than definitive proof of malicious intent.
+  </Accordion>
+
+  <Accordion title="Service attackers (brute force)">
+    A service attacker is a previously blacklisted IP that makes a high volume of connection attempts to a specific service port in a short time. This pattern is characteristic of automated brute-force attacks.
+
+    A typical example is 1,513 connection attempts to TCP port 3389 (RDP) in under 15 minutes. The `events` column reflects the total attempt count, while `dst_port` shows the targeted service. The `info` column will typically read `rdp attacker` or `ssh attacker` depending on the port.
+
+    To surface all similar events for the day, enter `ssh attacker` or `rdp attacker` in the `Filter` field. This is especially useful when reviewing days with many different attacker IPs, as it groups all brute-force attempts against the same service type into a single filtered view.
+  </Accordion>
+
+  <Accordion title="Malware C&C connections">
+    When an internal machine is infected, it typically contacts a known command-and-control (C&C) server. Maltrail detects these connections because C&C hostnames, domains, and IP addresses are included in static trail definitions and dynamic feeds.
+
+    Three common sub-patterns:
+
+    - **Direct C&C connections**: An infected internal IP (appearing in `src_ip`) connects to a known C&C IP or domain (appearing in `trail`). The `info` column identifies the malware family — for example, `beebone (malware)`.
+    - **DGA domain lookups**: The infected machine generates and queries domain names using a domain generation algorithm (DGA). These appear as DNS-based events where the `trail` is a known DGA domain. For example, Necurs malware is detected this way.
+    - **Malicious URL file downloads**: The infected machine attempts to download a file from a URL that is blacklisted by a feed such as `malwarepatrol.net`. These appear as URL-based events in the `Events` summary box.
+
+    To identify all internal computers affected by a specific malware family, enter the malware name (for example, `ramnit`) in the `Filter` field. To see all malware-related threats at once, filter by `malware`.
+  </Accordion>
+
+  <Accordion title="Suspicious domain lookups">
+    Maltrail uses several static lists to detect suspicious DNS activity:
+
+    - **Suspicious TLD domains**: Domains using TLDs commonly associated with malicious activity (such as `.cm`) are flagged. Many come from free domain registrars. These are often combined with DGA-style names, where the subdomain is a random string generated by malware to locate its C&C server.
+    - **Long domain names**: Valid TLDs (such as `.ru`) with unusually long, random-looking subdomains are flagged as `long domain name (suspicious)`. These are typical of DGA malware.
+    - **Dynamic domains**: Free dynamic DNS services (such as those that allow a domain's IP to change frequently) are used by malware to maintain reachable C&C servers. Maltrail maintains a static list of known dynamic DNS domains.
+    - **Onion-related domains**: Domains that route traffic through Tor2Web services are flagged. Malware sometimes uses these to reach Tor-based C&C infrastructure without requiring the Tor client on the infected machine.
+    - **Excessive NXDOMAIN responses**: Old or obsolete malware may continuously attempt to resolve a C&C domain that no longer exists, resulting in many DNS `NXDOMAIN` responses. Maltrail flags this pattern as `excessive no such domain (suspicious)`.
+
+    These events appear as DNS-based threats in the event table. The `trail` column holds the queried domain, and the `info` column describes the specific detection reason.
+  </Accordion>
+
+  <Accordion title="Suspicious ipinfo requests">
+    Many malware families contact an IP information service (such as [ipinfo.io](https://ipinfo.io)) at startup to determine the victim machine's public IP address. Maltrail flags connections to known ipinfo services.
+
+    In the event table, these appear with `ipinfo` in the `info` column. The `src_ip` is the potentially infected internal machine making the request.
+
+    To find all internal machines exhibiting this behavior — particularly useful when checking for widespread infection — enter `ipinfo` in the `Filter` field. Out-of-office-hours requests to ipinfo services are especially worth investigating.
+  </Accordion>
+
+  <Accordion title="Suspicious direct file downloads">
+    Maltrail tracks direct HTTP downloads of file types commonly associated with malware delivery. Monitored extensions include: `.apk`, `.bin`, `.class`, `.chm`, `.dll`, `.egg`, `.exe`, `.hta`, `.hwp`, `.lnk`, `.ps1`, `.scr`, `.sct`, `.wbk`, and `.xpi`.
+
+    These events are flagged because legitimate software distribution services typically use HTTPS rather than plain HTTP. A direct HTTP download of an executable from an unfamiliar host is worth investigating as a potential infection vector.
+
+    <Note>
+      This detection can generate false positives, particularly for software update mechanisms or internal tooling that uses HTTP. Use it as a starting point for investigation, not as confirmation of compromise.
+    </Note>
+
+    To find all such events, filter by `direct .exe download` or the relevant extension variant. The `trail` column holds the full URL of the download, and the bubble icon in the `events` column provides the complete HTTP request details.
+  </Accordion>
+
+  <Accordion title="Suspicious HTTP requests">
+    External web application security scanners generate characteristic HTTP requests when probing for vulnerabilities such as SQL injection (SQLi), cross-site scripting (XSS), and local file inclusion (LFI). Maltrail detects these request patterns.
+
+    A real-world example is attackers attempting to exploit Joomla! CMS vulnerabilities CVE-2015-7297, CVE-2015-7857, and CVE-2015-7858 via crafted SQL injection requests to the `com_contenthistory` component.
+
+    Similarly, the `sqlmap` SQL injection tool is detected by its distinctive HTTP User-Agent header, which appears in the `trail` column.
+
+    To examine the full set of suspicious HTTP requests for a given threat, click the bubble icon in the relevant row. The expanded dialog shows all individual request details, which you can copy and paste for further analysis.
+  </Accordion>
+
+  <Accordion title="Port scanning">
+    When Maltrail's heuristic engine detects too many connection attempts from a single source IP toward a large number of different TCP ports, it flags the behavior as a potential port scan. This detection does not rely on a blacklist — it is triggered by the traffic pattern alone.
+
+    A typical example is a run of [nmap](https://nmap.org/), where the scanner systematically probes a range of ports. In the event table, the `dst_port` bubble column contains a large list of scanned ports, and the `info` column notes the heuristic detection.
+
+    Port scan detection is part of Maltrail's `USE_HEURISTICS` feature, which must be enabled in `maltrail.conf`.
+  </Accordion>
+
+  <Accordion title="DNS resource exhaustion">
+    A common DDoS technique against DNS infrastructure is the random subdomain attack, where the attacker generates large numbers of queries for pseudo-random subdomain names under a target domain (for example, `abpdrsguvjkyz.www.dedeni.com`). This forces the DNS server to perform recursive lookups for each query, exhausting its resources.
+
+    Maltrail flags this pattern when it detects a high volume of queries for random subdomains. The `trail` column holds the queried domain pattern, and the `info` column identifies it as DNS resource exhaustion.
+  </Accordion>
+
+  <Accordion title="Data leakage">
+    Some applications — particularly mobile apps — send potentially sensitive data to remote servers as part of their normal operation or as malicious behavior. Maltrail attempts to detect this by identifying known data-collection endpoints and beacon hosts.
+
+    When detected, these appear in the event table with the `info` column describing the nature of the leakage behavior. The `src_ip` is the internal device sending data outbound.
+  </Accordion>
+
+  <Accordion title="Flood events">
+    When a single trail is responsible for an unusually large number of distinct threats — such as in a DNS amplification attack where the source IPs are spoofed and constantly changing — Maltrail groups all related threats under a single synthetic `flood` threat entry rather than generating hundreds of individual rows.
+
+    You can identify a flood threat by its ID: the unique threat ID is suffixed with `F0` (for example, `85fdb08dF0`). The `events` count reflects the total number of events grouped under this single entry.
+
+    Flood grouping keeps the event table readable during high-volume attack scenarios and prevents individual event rows from dominating the display.
+  </Accordion>
+</AccordionGroup>

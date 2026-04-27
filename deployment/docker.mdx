@@ -1,0 +1,111 @@
+---
+title: "Run Maltrail with Docker or Docker Compose"
+description: "Deploy the Maltrail server component as a container using the official image or Docker Compose, with configuration via a mounted config file."
+---
+
+Currently only the **server** component is available as a container image. The image is published to the GitHub Container Registry as `ghcr.io/stamparm/maltrail:latest` and exposes port `8338/tcp` for the HTTP reporting interface and port `8337/udp` for log collection from remote sensors. Configuration is supplied by mounting your local `maltrail.conf` into the container at `/opt/maltrail/maltrail.conf`.
+
+## Running with `docker run`
+
+<Steps>
+  <Step title="Start the server container">
+    Pull and start the container with restart policy, port mappings, and the configuration file mounted read-only:
+
+    ```bash
+    docker run -d \
+      --name maltrail \
+      --restart=unless-stopped \
+      -p 8338:8338/tcp \
+      -p 8337:8337/udp \
+      -v /etc/maltrail.conf:/opt/maltrail/maltrail.conf:ro \
+      ghcr.io/stamparm/maltrail:latest
+    ```
+  </Step>
+
+  <Step title="Update the image">
+    Stop the running container, pull the latest image, and start the container again:
+
+    ```bash
+    docker stop maltrail
+    docker pull ghcr.io/stamparm/maltrail:latest
+    docker start maltrail
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  To pin to a specific release rather than `latest`, replace the image tag. For example: `ghcr.io/stamparm/maltrail:0.84`
+</Note>
+
+## Running with Docker Compose
+
+The `docker/docker-compose.yml` file in the repository defines the server service. The sensor service is included in the file but commented out, as the sensor is not yet available as a pre-built image.
+
+```yaml docker-compose.yml
+services:
+
+  # sensor:
+  #   container_name: maltrail-sensor
+  #   build: .
+  #   command: sensor.py
+  #   restart: unless-stopped
+  #   network_mode: host
+  #   privileged: true
+  #   volumes:
+  #     - "/etc/localtime:/etc/localtime:ro"
+  #     - "/etc/maltrail.conf:/opt/maltrail/maltrail.conf:ro"
+  #     - "/var/log/maltrail:/var/log/maltrail"
+
+  server:
+    container_name: maltrail-server
+    build: .
+    command: server.py
+    restart: unless-stopped
+    ports:
+      - "8338:8338/tcp"
+      - "8337:8337/udp"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/etc/maltrail.conf:/opt/maltrail/maltrail.conf:ro"
+      - "/var/log/maltrail:/var/log/maltrail"
+```
+
+<Steps>
+  <Step title="Start the server with Compose">
+    ```bash
+    docker compose up -d
+    ```
+  </Step>
+
+  <Step title="Update the image with Compose">
+    ```bash
+    docker compose down --remove-orphans
+    docker compose build
+    docker compose up -d
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Do not edit `docker-compose.yml` directly — `git pull` will overwrite your changes. Instead, copy it to `docker-compose.override.yml` (already listed in `.gitignore`) and apply your customizations there.
+</Warning>
+
+## Verifying the deployment
+
+After the container is running, confirm that traffic is being captured and logged.
+
+Test IP-based detection:
+
+```bash
+ping -c 1 136.161.101.53
+cat /var/log/maltrail/$(date +"%Y-%m-%d").log
+```
+
+Test DNS capture:
+
+```bash
+nslookup morphed.ru
+cat /var/log/maltrail/$(date +"%Y-%m-%d").log
+```
+
+Both commands should produce entries in today's log file if Maltrail is receiving traffic and matching against its trail lists.

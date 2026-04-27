@@ -1,0 +1,133 @@
+---
+title: "Block attackers automatically with fail2ban"
+description: "Use Maltrail's /fail2ban endpoint with ipset and iptables to automatically block today's detected attacker IPs at the network level."
+---
+
+Maltrail's server exposes a `/fail2ban` HTTP endpoint that returns a plain-text list of attacker source IPs seen today. Any IP blocking tool—`fail2ban`, `ipset`, `iptables`, or a custom script—can poll this endpoint periodically and drop traffic from those addresses at the network layer.
+
+## The /fail2ban endpoint
+
+The endpoint returns one IPv4 address per line, filtered by the `FAIL2BAN_REGEX` option in `maltrail.conf`. Only IPs whose event `info` field matches the regex are included.
+
+**Default `FAIL2BAN_REGEX`** (from `maltrail.conf`):
+
+```ini maltrail.conf
+FAIL2BAN_REGEX attacker|reputation|potential[^"]*(web scan|directory traversal|injection|remote code|iot-malware download)|spammer|mass scanner
+```
+
+Access to the endpoint is restricted by `FAIL2BAN_ALLOWLIST`. If the allowlist is empty or unset, the `/fail2ban` endpoint returns nothing and is effectively disabled.
+
+**Default `FAIL2BAN_ALLOWLIST`** (from `maltrail.conf`):
+
+```ini maltrail.conf
+FAIL2BAN_ALLOWLIST 127.0.0.1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+```
+
+<Warning>
+  If `FAIL2BAN_ALLOWLIST` is unset or empty, access to `/fail2ban` is denied for all callers. You must have at least `127.0.0.1` in the allowlist for local scripts to work.
+</Warning>
+
+## Automated blocking with ipset and iptables
+
+The following script flushes the `maltrail` ipset, rebuilds it from the `/fail2ban` endpoint, and inserts a DROP rule in `iptables`. Run it as a `root` cronjob every minute:
+
+```bash
+#!/bin/bash
+ipset -q flush maltrail
+ipset -q create maltrail hash:net
+for ip in $(curl http://127.0.0.1:8338/fail2ban 2>/dev/null | grep -P '^[0-9.]+$'); do ipset add maltrail $ip; done
+iptables -I INPUT -m set --match-set maltrail src -j DROP
+```
+
+## Native fail2ban configuration
+
+The `fail2ban/` directory ships a `maltrail.conf.example` that you can use as a fail2ban filter. It matches Maltrail's CSV log format and covers the most common threat categories:
+
+```ini fail2ban/maltrail.conf.example
+[Definition]
+failregex = ^.*?\s+<HOST>\s+\d+\s+\d+\.\d+\.\d+\.\d+\s+\d+\s+\w+\s+\w+\s+\d+\.\d+\.\d+\.\d+\s+"known attacker".*$
+            ^.*?\s+<HOST>\s+\d+\s+\d+\.\d+\.\d+\.\d+\s+\d+\s+\w+\s+\w+\s+\d+\.\d+\.\d+\.\d+\s+"mass scanner".*$
+            ^.*?\s+<HOST>\s+\d+\s+\d+\.\d+\.\d+\.\d+\s+\d+\s+\w+\s+\w+\s+\d+\.\d+\.\d+\.\d+\s+"malware".*$
+            ^.*?\s+<HOST>\s+\d+\s+\d+\.\d+\.\d+\.\d+\s+\d+\s+\w+\s+\w+\s+\d+\.\d+\.\d+\.\d+\s+"heuristic".*$
+            ^.*?\s+<HOST>\s+\d+\s+\d+\.\d+\.\d+\.\d+\s+\d+\s+\w+\s+\w+\s+\d+\.\d+\.\d+\.\d+\s+"attacker".*$
+            ^.*?\s+<HOST>\s+\d+\s+\d+\.\d+\.\d+\.\d+\s+\d+\s+\w+\s+\w+\s+\d+\.\d+\.\d+\.\d+\s+"reputation".*$
+            ^.*?\s+<HOST>\s+\d+\s+\d+\.\d+\.\d+\.\d+\s+\d+\s+\w+\s+\w+\s+\d+\.\d+\.\d+\.\d+\s+"potential[^"]*(web scan|directory traversal|injection|remote code|iot-malware download)".*$
+            ^.*?\s+<HOST>\s+\d+\s+\d+\.\d+\.\d+\.\d+\s+\d+\s+\w+\s+\w+\s+\d+\.\d+\.\d+\.\d+\s+"spammer".*$
+```
+
+## The /blacklist endpoint
+
+For more granular blocking, the `BLACKLIST` configuration in the `[Server]` section lets you build custom IP lists filtered by any combination of event fields. The endpoint is `/blacklist` (or `/blacklist/<name>` for named blacklists).
+
+**Rule syntax:**
+
+```
+<field> <control> <regexp>
+```
+
+| Component | Values |
+|-----------|--------|
+| `field`   | `src_ip`, `src_port`, `dst_ip`, `dst_port`, `protocol`, `type`, `trail`, `filter` |
+| `control` | `~` (matches) or `!~` (does not match) |
+
+Chain multiple conditions with the `and` keyword. The `or` keyword is not supported—add a separate rule line instead.
+
+**Example configuration:**
+
+```ini maltrail.conf
+BLACKLIST_OUT
+    src_ip !~ ^192.168. and dst_port ~ ^22$
+    src_ip !~ ^192.168. and filter ~ scan
+    src_ip !~ ^192.168. and filter ~ known attacker
+
+BLACKLIST_IN
+    src_ip ~ ^192.168. and filter ~ malware
+```
+
+This creates two endpoints: `/blacklist/out` and `/blacklist/in`. Use the same `ipset` pattern to consume them:
+
+```bash
+for ip in $(curl http://127.0.0.1:8338/blacklist/out 2>/dev/null | grep -P '^[0-9.]+$'); do ipset add maltrail $ip; done
+```
+
+## Setup steps
+
+<Steps>
+  <Step title="Configure FAIL2BAN_ALLOWLIST">
+    Edit `maltrail.conf` and set `FAIL2BAN_ALLOWLIST` to include `127.0.0.1` plus any management networks that should be able to call the endpoint. Without this, the endpoint is blocked for everyone.
+
+    ```ini maltrail.conf
+    FAIL2BAN_ALLOWLIST 127.0.0.1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+    ```
+  </Step>
+  <Step title="Set FAIL2BAN_REGEX">
+    Tune `FAIL2BAN_REGEX` to match only the threat categories you want to block. The default covers common attacker, scanner, and reputation-based categories.
+
+    ```ini maltrail.conf
+    FAIL2BAN_REGEX attacker|reputation|potential[^"]*(web scan|directory traversal|injection|remote code|iot-malware download)|spammer|mass scanner
+    ```
+  </Step>
+  <Step title="Install the cronjob script">
+    Save the ipset/iptables script to a file (e.g. `/usr/local/bin/maltrail-block.sh`), make it executable, and add it to root's crontab to run every minute:
+
+    ```bash
+    chmod +x /usr/local/bin/maltrail-block.sh
+    sudo crontab -e
+    ```
+
+    Add this line:
+
+    ```
+    */1 * * * * /usr/local/bin/maltrail-block.sh
+    ```
+  </Step>
+  <Step title="Verify the endpoint">
+    Test that the endpoint is reachable and returning IPs:
+
+    ```bash
+    curl http://127.0.0.1:8338/fail2ban
+    ```
+
+    Each line in the output is a plain IPv4 address. An empty response means either no matching events exist for today or the allowlist is blocking the request.
+  </Step>
+</Steps>

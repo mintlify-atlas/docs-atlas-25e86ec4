@@ -1,0 +1,64 @@
+---
+title: "Maltrail: Open-Source Malicious Traffic Detection"
+description: "Maltrail detects malicious traffic using blacklists and heuristics. Covers core concepts: trails, feeds, heuristics, and the Sensor/Server/Client architecture."
+---
+
+Maltrail is a malicious traffic detection system that uses publicly available blacklists containing malicious and suspicious trails, static trails compiled from AV reports, and optional heuristic mechanisms to surface unknown threats. It runs on Unix and BSD systems and is designed to passively monitor network traffic with minimal operational overhead.
+
+## Core concepts
+
+**Trails** are the atomic unit of detection in Maltrail — anything that can appear in network traffic and be matched against a known-bad entry. A trail can be:
+
+- A **domain name** — for example, `zvpprsensinaix.com`, a domain associated with the Banjori malware DGA
+- A **URL** — for example, `hXXp://109.162.38.120/harsh02.exe`, pointing to a known malicious executable
+- An **IP address** — for example, `185.130.5.231`, a known attacker address
+- An **HTTP User-Agent header value** — for example, `sqlmap`, the automated SQL injection tool
+
+**Feeds** are the blacklists from which trails are pulled on a regular schedule. Maltrail aggregates more than 70 public feeds, including `alienvault`, `emergingthreatsbot`, `feodotrackerip`, `openphish`, `sslbl`, `talosintelligence`, `torproject`, `urlhaus`, and many others. Static trail entries — compiled manually from AV reports and research — cover hundreds of specific malware families, C&C servers, and APT groups.
+
+**Heuristics** are optional detection mechanisms that look for behavioural signals rather than exact blacklist matches. They can flag things like unusually long domain names, excessive NXDOMAIN responses, direct `.exe` downloads, and suspicious HTTP paths. Heuristics are enabled via the `USE_HEURISTICS` option in `maltrail.conf` and may introduce false positives.
+
+## The three components
+
+Maltrail is composed of three distinct components that can run on the same machine or be distributed across a network.
+
+<CardGroup cols={3}>
+  <Card title="Sensor" icon="radar">
+    Captures live network traffic using pcapy-ng. Runs on a SPAN/mirror port or inline on a Linux bridge. Matches traffic against trail blacklists and sends events to the Server or writes them locally. Requires root privileges and at least 1 GB of RAM.
+  </Card>
+  <Card title="Server" icon="server">
+    Receives events from one or more sensors over UDP (port 8337) or reads them from a local log directory. Stores events as CSV files in `LOG_DIR`. Provides the HTTP reporting interface on port 8338 (default).
+  </Card>
+  <Card title="Client" icon="browser">
+    A web browser that connects to the Server's HTTP interface. All data processing and rendering happens client-side in a fat-client architecture — compressed log chunks are transferred to the browser and rendered into the timeline, charts, and events table.
+  </Card>
+</CardGroup>
+
+## System requirements
+
+- **Python** 2.6, 2.7, or 3.x on a Unix/BSD system
+- **pcapy-ng** Python package (install with `pip3 install pcapy-ng`)
+- **Sensor** requires at least 1 GB of RAM in single-process mode; more RAM is needed when `PROCESS_COUNT` is set above `1`, depending on `CAPTURE_BUFFER`
+- **Sensor** requires administrative (root) privileges for packet capture
+- **Server** has no special hardware or privilege requirements
+
+<Note>
+  Use `pcapy-ng`, not the older `pcapy` library. The original `pcapy` is deprecated and causes issues in Python 3 environments.
+</Note>
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install dependencies, start the sensor and server, and verify your first detection in under ten minutes.
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/architecture">
+    Understand the traffic flow between Sensor, Server, and Client, and how distributed deployments work.
+  </Card>
+  <Card title="Sensor configuration" icon="sliders" href="/configuration/sensor">
+    Configure interfaces, capture filters, heuristics, log destinations, and feed update settings.
+  </Card>
+  <Card title="Reporting interface" icon="chart-line" href="/usage/reporting-interface">
+    Navigate the web UI, use filters, read threat entries, and export attacker IPs for blocking.
+  </Card>
+</CardGroup>

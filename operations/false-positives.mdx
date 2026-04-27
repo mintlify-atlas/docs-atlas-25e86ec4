@@ -1,0 +1,164 @@
+---
+title: "Handle false positives in Maltrail"
+description: "Suppress, whitelist, and investigate false positives in Maltrail using USER_WHITELIST, USER_IGNORELIST, DISABLED_FEEDS, and IP_MINIMUM_FEEDS tuning."
+---
+
+Like all traffic detection systems, Maltrail will occasionally flag legitimate traffic. Feed providers sometimes incorrectly mark trusted hosts—for example, `blocklist.de` has been observed marking Google servers as attackers. Heuristic detections can also trigger on normal user behavior, such as accessing domains under the `.work` TLD. Understanding the available controls helps you reduce noise without disabling useful detection coverage.
+
+## Why false positives occur
+
+<AccordionGroup>
+  <Accordion title="Feed provider errors">
+    Dynamic feed providers can mark legitimate infrastructure as malicious. A well-known example from the Maltrail README: `blocklist.de` marked a regular Google server as an attacker, producing events with a valid-looking source IP but a completely benign destination. Hovering over the trail in the reporting interface and checking the searX results quickly reveals whether the flagged host belongs to a major CDN or service provider.
+  </Accordion>
+  <Accordion title="Heuristic detection on normal behavior">
+    Maltrail's heuristic mechanisms (`USE_HEURISTICS true`) watch for patterns like long domain names, excessive NXDOMAIN responses, and direct executable downloads. These patterns are shared by malware but also occur in legitimate browsing. For example, accessing a `.work` TLD domain—a free registrar TLD heavily abused by malware—will generate a `suspicious domain` event even if the destination is benign.
+  </Accordion>
+  <Accordion title="Legitimate scanners and services">
+    Services like Shodan and ZoomEye perform full-Internet port scans daily and appear on multiple reputation feeds. Their IPs will trigger `mass scanner` or `reputation` events. These are technically accurate—the hosts do scan—but blocking them may not align with your policy.
+  </Accordion>
+</AccordionGroup>
+
+## Whitelisting entries
+
+The `USER_WHITELIST` option points to a file of domains, IPs, and CIDR ranges that Maltrail will never flag, regardless of feed matches. Set it in the `[Sensor]` section of `maltrail.conf`:
+
+```ini maltrail.conf
+# Location of file with whitelisted entries (i.e. IP addresses, domain names, etc.)
+USER_WHITELIST /etc/maltrail/whitelist.txt
+```
+
+The built-in `misc/whitelist.txt` ships with an extensive set of pre-approved entries covering CDNs, security vendors, public DNS resolvers, DNSBL infrastructure, and common ad networks that regularly appear on blacklists. The format is one entry per line, supporting domains, IPs, CIDR blocks, and inline comments:
+
+```text misc/whitelist.txt (excerpt)
+localhost
+127.0.0.1
+::1
+
+# triggering suspicious (sub)domain names
+1e100.net
+akamaiedge.net
+amazonaws.com
+cloudfront.net
+google.com
+googleapis.com
+
+# Google (appeared on VoipBL)
+35.190.247.0/24
+64.233.160.0/19
+66.249.80.0/20
+74.125.0.0/16
+173.194.0.0/16
+
+# Apple
+17.0.0.0/8
+
+# Microsoft
+204.79.196.0/23
+```
+
+<Tip>
+  Start with `misc/whitelist.txt` as your baseline. Copy it to a writable location, point `USER_WHITELIST` at it, and add your own site-specific entries below the existing content.
+</Tip>
+
+## Ignoring specific events
+
+Two mechanisms suppress events after detection, without removing entries from the trail database.
+
+### USER_IGNORELIST
+
+`USER_IGNORELIST` points to a file of suppression rules. Each rule matches on the four-tuple `src_ip;src_port;dst_ip;dst_port`, where `*` is a wildcard:
+
+```ini maltrail.conf
+# Location of file with ignore event rules.
+USER_IGNORELIST /etc/maltrail/ignore_events.txt
+```
+
+The bundled `misc/ignore_events.txt` shows the rule syntax:
+
+```text misc/ignore_events.txt
+# Syntax:
+#
+# src_ip;src_port;dst_ip;dst_port
+#
+# (Note: '*' means any)
+#
+# Ignore all events from source ip 192.168.0.3
+# 192.168.0.3;*;*;*
+#
+# Ignore all events to SSH port 22
+# *;*;*;22
+```
+
+### IGNORE_EVENTS_REGEX
+
+`IGNORE_EVENTS_REGEX` applies a regular expression against the entire raw event entry. Any event whose full log line matches is suppressed:
+
+```ini maltrail.conf
+# Regular expression to be used against the whole event entry to be ignored
+IGNORE_EVENTS_REGEX sql injection|long domain|117.21.225.3|sinkhole
+```
+
+Use this to suppress entire categories (e.g. `sinkhole`) or specific known-noisy IPs without editing trail data.
+
+## Reducing feed noise
+
+### Disabling feeds
+
+`DISABLED_FEEDS` accepts a comma-separated list of feed module names (files in `trails/feeds/`). The default configuration already disables several feeds that have been flagged as producing too many false positives:
+
+```ini maltrail.conf
+# turris and ciarmy/cinsscore seem to be too "noisy" lately;
+# policeman is old and produces lots of false positives
+DISABLED_FEEDS turris, ciarmy, policeman, myip, alienvault
+```
+
+Add any feed name that generates unacceptable noise in your environment.
+
+### Raising IP_MINIMUM_FEEDS
+
+`IP_MINIMUM_FEEDS` controls how many independent dynamic feeds must list an IP before Maltrail flags it. Static trails are always included regardless of this setting.
+
+```ini maltrail.conf
+# Ignore IPs that appear on lower than IP_MINIMUM_FEEDS number of feeds
+IP_MINIMUM_FEEDS 3
+```
+
+Raising this value (e.g. to `5`) means an IP must appear on five separate feeds before it triggers an event, dramatically reducing noise from feeds that frequently flag shared infrastructure.
+
+### Disabling trails by info text
+
+`DISABLED_TRAILS_INFO_REGEX` suppresses entire categories of trails based on their info text, without disabling the feeds themselves:
+
+```ini maltrail.conf
+# Disable trails based on the following regular expression run against the corresponding info
+#DISABLED_TRAILS_INFO_REGEX known attacker|tor exit node
+```
+
+Uncomment and extend the regex to exclude categories that generate too much noise for your network profile.
+
+## Investigation best practices
+
+Before acting on a Maltrail event, confirm it is a true positive:
+
+<Steps>
+  <Step title="Check the trail in searX">
+    Hover over the trail value in the reporting interface for a few seconds. Maltrail opens a frame with searX search results for that trail. In most cases this immediately reveals whether the IP or domain belongs to a known legitimate service.
+  </Step>
+  <Step title="Review WHOIS on hover">
+    Hovering over `src_ip` or `dst_ip` shows a tooltip with reverse DNS and RIPE WHOIS data. If the IP belongs to a major cloud provider, CDN, or known security scanner, it is a candidate for whitelisting.
+  </Step>
+  <Step title="Check the reference field">
+    The `reference` column tells you where the trail came from. Trails with `(static)` are manually curated and are generally more reliable. Trails from a single dynamic feed (e.g. `blocklist.de`) deserve more scrutiny before acting on them. Trails with `(custom)` come from your own `USER_WHITELIST`-adjacent custom trail files.
+  </Step>
+  <Step title="Tag confirmed false positives">
+    Use the `tags` column in the reporting interface to mark events you have investigated. Tags are stored per-trail, so all future events for the same trail will carry the tag. This makes it easier to distinguish reviewed events from new ones during the same session.
+  </Step>
+  <Step title="Add to whitelist or ignorelist">
+    Once confirmed as a false positive, add the IP, CIDR, or domain to your `USER_WHITELIST` file, or add a suppression rule to `USER_IGNORELIST`. Restart the sensor after editing whitelist files.
+  </Step>
+</Steps>
+
+<Note>
+  For `suspicious` category events specifically, the Maltrail documentation recommends that administrators use additional means to verify before blocking. Heuristic events indicate unusual behavior, not confirmed malice.
+</Note>

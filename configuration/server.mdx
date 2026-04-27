@@ -1,0 +1,205 @@
+---
+title: "Configure the Maltrail server"
+description: "Reference for every option in the [Server] section of maltrail.conf: HTTP interface, user accounts, UDP log collection, and blacklist endpoints."
+---
+
+The server reads its configuration from `maltrail.conf` at startup. Options in the `[Server]` section control the web reporting interface, user authentication, remote log collection from sensors, and IP blacklist generation endpoints.
+
+<Warning>
+  The default admin password is `changeme!`. Change it immediately after installation by replacing the SHA-256 hash in the `USERS` entry.
+</Warning>
+
+## HTTP server
+
+<AccordionGroup>
+  <Accordion title="HTTP_ADDRESS">
+    **Default:** `0.0.0.0`
+
+    IP address the web server binds to. Use `0.0.0.0` to listen on all IPv4 interfaces, `::` for all IPv6 interfaces, or a specific address to restrict access.
+
+    ```text maltrail.conf
+    HTTP_ADDRESS 0.0.0.0
+    ```
+  </Accordion>
+
+  <Accordion title="HTTP_PORT">
+    **Default:** `8338`
+
+    TCP port the web reporting server listens on. The reporting interface is accessible at `http://<HTTP_ADDRESS>:<HTTP_PORT>/`.
+
+    ```text maltrail.conf
+    HTTP_PORT 8338
+    ```
+  </Accordion>
+
+  <Accordion title="USE_SSL">
+    **Default:** `false`
+
+    When `true`, the server uses TLS for all web connections. You must also set `SSL_PEM` to a valid PEM file path.
+
+    ```text maltrail.conf
+    USE_SSL true
+    ```
+  </Accordion>
+
+  <Accordion title="SSL_PEM">
+    **Default:** *(unset)*
+
+    Path to a combined private key and certificate PEM file. Generate a self-signed certificate with:
+
+    ```bash
+    openssl req -new -x509 -keyout server.pem -out server.pem -days 1023 -nodes
+    ```
+
+    ```text maltrail.conf
+    SSL_PEM misc/server.pem
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## User accounts
+
+<Accordion title="USERS">
+  **Format:** `username:sha256(password):UID:filter_netmask(s)`
+
+  Defines all user accounts. Each account is on its own indented line under the `USERS` directive.
+
+  - **UID < 1000** — administrator account with full access
+  - **UID ≥ 1000** — display-only account; cannot modify settings
+  - **filter_netmask** — optional comma-delimited CIDR ranges; events outside these ranges are hidden for this user
+
+  Generate a password hash on Linux:
+
+  ```bash
+  echo -n 'mypassword' | sha256sum | cut -d " " -f 1
+  ```
+
+  Example configuration:
+
+  ```text maltrail.conf
+  USERS
+      admin:9ab3cd9d67bf49d01f6a2e33d0bd9bc804ddbe6ce1ff5d219c42624851db5dbc:0:
+      local:9ab3cd9d67bf49d01f6a2e33d0bd9bc804ddbe6ce1ff5d219c42624851db5dbc:1000:192.168.0.0/16
+  ```
+</Accordion>
+
+<Accordion title="ENABLE_MASK_CUSTOM">
+  **Default:** `true`
+
+  When `true`, the names of custom trails (those loaded from `CUSTOM_TRAILS_DIR` or `CUSTOM_TRAILS_URL`) are hidden from non-admin users (UID ≥ 1000). The event is still shown, but the trail name is masked.
+
+  ```text maltrail.conf
+  ENABLE_MASK_CUSTOM true
+  ```
+</Accordion>
+
+## Remote log collection (multi-sensor)
+
+<AccordionGroup>
+  <Accordion title="UDP_ADDRESS">
+    **Default:** *(unset / disabled)*
+
+    IP address the server's UDP log collection service binds to. When set, remote sensors can send events to this server over UDP by configuring `LOG_SERVER` in their sensor configuration.
+
+    ```text maltrail.conf
+    UDP_ADDRESS 0.0.0.0
+    ```
+  </Accordion>
+
+  <Accordion title="UDP_PORT">
+    **Default:** `8337`
+
+    UDP port for the log collection service. Remote sensors must set `LOG_SERVER` to `<server-ip>:8337`.
+
+    ```text maltrail.conf
+    UDP_PORT 8337
+    ```
+  </Accordion>
+
+  <Accordion title="USE_SERVER_UPDATE_TRAILS">
+    **Default:** `false`
+
+    When `true`, the server also fetches and compiles trail updates. Enable this when remote sensors are configured to pull trail definitions from this server via `UPDATE_SERVER`.
+
+    ```text maltrail.conf
+    USE_SERVER_UPDATE_TRAILS true
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Display options
+
+<AccordionGroup>
+  <Accordion title="IP_ALIASES">
+    **Default:** *(unset)*
+
+    Maps IP addresses to human-readable labels shown in the `src_ip` and `dst_ip` columns of the reporting interface. One alias per indented line in `ip:label` format.
+
+    ```text maltrail.conf
+    IP_ALIASES
+        8.8.8.8:google-dns
+        8.8.4.4:google-dns
+        1.1.1.1:cloudflare-dns
+    ```
+  </Accordion>
+
+  <Accordion title="HEADER_LOGO">
+    **Default:** *(unset)*
+
+    Replaces the default Maltrail logo in the top-left corner of the web UI with custom HTML (typically an `<img>` tag or a text label).
+
+    ```text maltrail.conf
+    HEADER_LOGO <img src="https://example.com/logo.png" style="width: 26px"> MyOrg
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Fail2ban and blacklist endpoints
+
+<AccordionGroup>
+  <Accordion title="FAIL2BAN_REGEX">
+    **Default:** `attacker|reputation|potential[^"]*(web scan|directory traversal|injection|remote code|iot-malware download)|spammer|mass scanner`
+
+    Regular expression applied to event `info` fields to select which source IPs are returned by the `/fail2ban` endpoint. Only events whose `info` field matches this regex contribute an IP to the response.
+
+    ```text maltrail.conf
+    FAIL2BAN_REGEX attacker|reputation|potential[^"]*(web scan|directory traversal|injection|remote code|iot-malware download)|spammer|mass scanner
+    ```
+  </Accordion>
+
+  <Accordion title="FAIL2BAN_ALLOWLIST">
+    **Default:** `127.0.0.1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16`
+
+    Comma-delimited list of IPv4 addresses and CIDR ranges permitted to call `/fail2ban`. Requests from outside this list receive a 403 response. If left empty, the endpoint is completely blocked.
+
+    ```text maltrail.conf
+    FAIL2BAN_ALLOWLIST 127.0.0.1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+    ```
+  </Accordion>
+
+  <Accordion title="BLACKLIST (named blacklists)">
+    **Default:** *(unset)*
+
+    Defines custom IP blacklist endpoints. Use `BLACKLIST` for `/blacklist` or `BLACKLIST_NAME` for `/blacklist/name`. Each rule is on an indented line with the syntax:
+
+    ```
+    <field> <control> <regexp>
+    ```
+
+    - **field**: `src_ip`, `src_port`, `dst_ip`, `dst_port`, `protocol`, `type`, `trail`, or `filter`
+    - **control**: `~` (matches) or `!~` (does not match)
+    - Chain rules with the `and` keyword (one rule per line for OR logic)
+
+    ```text maltrail.conf
+    BLACKLIST_OUT
+        src_ip !~ ^192.168. and dst_port ~ ^22$
+        src_ip !~ ^192.168. and filter ~ scan
+        src_ip !~ ^192.168. and filter ~ known attacker
+
+    BLACKLIST_IN
+        src_ip ~ ^192.168. and filter ~ malware
+    ```
+
+    This creates `/blacklist/out` and `/blacklist/in` endpoints.
+  </Accordion>
+</AccordionGroup>

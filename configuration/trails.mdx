@@ -1,0 +1,122 @@
+---
+title: "Manage Maltrail threat intelligence trails"
+description: "Learn how Maltrail loads and updates trails from feeds, static lists, and custom files, and how to add your own threat indicators."
+---
+
+A **trail** is any indicator that Maltrail matches against network traffic to generate an event. Trails can be domain names, IP addresses, URLs, or HTTP User-Agent strings. Maltrail assembles its active trail set from three sources: dynamic feeds fetched from the internet, static lists bundled with the installation, and custom files you provide.
+
+## Trail types
+
+| Type | Example | Description |
+|------|---------|-------------|
+| Domain name | `zvpprsensinaix.com` | Matched against DNS queries |
+| IP address | `185.130.5.231` | Matched against packet source/destination IPs |
+| URL | `hXXp://109.162.38.120/harsh02.exe` | Matched against HTTP request paths |
+| User-Agent | `sqlmap` | Matched against HTTP User-Agent headers |
+
+## Dynamic feeds
+
+Maltrail ships with feed modules in `trails/feeds/`. Each module fetches a threat intelligence list from a remote source and extracts trails from it. The full feed list includes:
+
+<AccordionGroup>
+  <Accordion title="IP reputation feeds">
+    `abuseipdb`, `alienvault`, `badips`, `binarydefense`, `blocklist`, `bruteforceblocker`, `ciarmy`, `cleantalk`, `dataplane`, `dshieldip`, `feodotrackerip`, `gpfcomics`, `greensnow`, `ipnoise`, `maxmind`, `minerchk`, `myip`, `policeman`, `ransomwaretrackerip`, `rutgers`, `sblam`, `scriptzteam`, `turris`, `viriback`
+  </Accordion>
+  <Accordion title="Malware and botnet feeds">
+    `atmos`, `bitcoinnodes`, `blackbook`, `blackholemonster`, `botscout`, `cobaltstrike`, `cybercrimetracker`, `emergingthreatsbot`, `emergingthreatscip`, `fareit`, `palevotracker`, `trickbot`, `zeustrackermonitor`, `zeustrackerurl`
+  </Accordion>
+  <Accordion title="DNS and URL feeds">
+    `emergingthreatsdns`, `malwaredomainlistdns`, `malwaredomains`, `openphish`, `ransomwaretrackerdns`, `ransomwaretrackerurl`, `urlhaus`
+  </Accordion>
+  <Accordion title="Proxy and anonymizer feeds">
+    `socksproxy`, `sslproxies`, `torproject`
+  </Accordion>
+</AccordionGroup>
+
+### Controlling feed updates
+
+```text maltrail.conf
+# Enable or disable feed updates entirely
+USE_FEED_UPDATES true
+
+# Feeds to skip (comma-separated feed names, matching filenames in trails/feeds/)
+DISABLED_FEEDS turris, ciarmy, policeman, myip, alienvault
+
+# Only include IPs that appear on at least this many feeds
+IP_MINIMUM_FEEDS 3
+
+# How often to refresh trails (seconds); default is 86400 = 1 day
+UPDATE_PERIOD 86400
+```
+
+<Tip>
+  The default `DISABLED_FEEDS` list excludes feeds that have historically been noisy. If you want stricter coverage, reduce `IP_MINIMUM_FEEDS` to `1` or `2`, but expect more false positives.
+</Tip>
+
+## Static trails
+
+Static trails are manually curated entries bundled in the `trails/static/` directory. They cover thousands of known malware families, C&C servers, APT infrastructure, sinkholes, and suspicious domain patterns. Static trails are always included regardless of `IP_MINIMUM_FEEDS`.
+
+Events from static trails show `(static)` in the `reference` column, making them easy to distinguish from feed-sourced detections.
+
+Maltrail also publishes a daily-updated blacklist of malware-related domains derived from `trails/static/malware`:
+
+```
+https://raw.githubusercontent.com/stamparm/aux/master/maltrail-malware-domains.txt
+```
+
+This file can be used directly for DNS blocking.
+
+## Custom trails
+
+Add your own threat indicators without modifying the core installation.
+
+### Local custom files
+
+Place one or more `.txt` files in `CUSTOM_TRAILS_DIR` (default: `./trails/custom`). Each file should contain one trail per line — a domain name, IP address, URL, or User-Agent string. Lines starting with `#` are treated as comments.
+
+```text custom_iocs.txt
+# Known attacker infrastructure
+203.0.113.42
+evil-c2.example.com
+http://malicious.example.com/payload.exe
+```
+
+```text maltrail.conf
+CUSTOM_TRAILS_DIR /etc/maltrail/custom
+```
+
+### Remote custom feed
+
+Pull a custom trail file from a URL on each update cycle:
+
+```text maltrail.conf
+CUSTOM_TRAILS_URL https://threatintel.example.com/my-iocs.txt
+```
+
+<Note>
+  Custom trails appear with reference `(custom)` in events. If `ENABLE_MASK_CUSTOM true` is set in the server config, non-admin users see the event but not the trail name.
+</Note>
+
+### Filtering trails by info
+
+Exclude entire categories of trails by matching against the `info` field:
+
+```text maltrail.conf
+# Suppress known attacker and Tor exit node detections
+DISABLED_TRAILS_INFO_REGEX known attacker|tor exit node
+```
+
+## Pulling trails from a central server
+
+In multi-sensor deployments, you can have sensors pull their trail set from the Maltrail server instead of fetching feeds independently:
+
+```text maltrail.conf (sensor)
+UPDATE_SERVER http://192.168.2.107:8338/trails
+```
+
+```text maltrail.conf (server)
+USE_SERVER_UPDATE_TRAILS true
+```
+
+This reduces outbound feed requests and ensures all sensors use an identical trail set.

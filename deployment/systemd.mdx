@@ -1,0 +1,145 @@
+---
+title: "Run Maltrail as systemd services on Linux"
+description: "Install and manage the Maltrail sensor and server as systemd services, with automatic startup on boot and standard journalctl log access."
+---
+
+Maltrail ships two systemd unit files — one for the sensor and one for the server — that handle process lifecycle, working directory, and dependency ordering. Both services run as `root`, start from `/opt/maltrail/`, and use `KillMode=mixed` to cleanly terminate child processes on stop.
+
+## Unit file contents
+
+<CodeGroup>
+
+```ini maltrail-sensor.service
+[Unit]
+Description=Maltrail. Sensor of malicious traffic detection system
+Documentation=https://github.com/stamparm/maltrail#readme
+Documentation=https://github.com/stamparm/maltrail/wiki
+Requires=network.target
+Wants=maltrail-server.service
+After=network-online.target maltrail-server.service
+
+[Service]
+User=root
+WorkingDirectory=/opt/maltrail/
+ExecStart=/usr/bin/python3 sensor.py
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```ini maltrail-server.service
+[Unit]
+Description=Maltrail. Server of malicious traffic detection system
+Documentation=https://github.com/stamparm/maltrail#readme
+Documentation=https://github.com/stamparm/maltrail/wiki
+Requires=network.target
+Before=maltrail-sensor.service
+After=network-online.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/maltrail/
+ExecStart=/usr/bin/python3 server.py
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target
+```
+
+</CodeGroup>
+
+## Installing the services
+
+<Steps>
+  <Step title="Copy the unit files">
+    ```bash
+    sudo cp /opt/maltrail/maltrail-sensor.service /etc/systemd/system/maltrail-sensor.service
+    sudo cp /opt/maltrail/maltrail-server.service /etc/systemd/system/maltrail-server.service
+    ```
+  </Step>
+
+  <Step title="Reload the systemd daemon">
+    ```bash
+    sudo systemctl daemon-reload
+    ```
+  </Step>
+
+  <Step title="Start both services">
+    Start the server before the sensor so the sensor can connect locally on first run:
+
+    ```bash
+    sudo systemctl start maltrail-server.service
+    sudo systemctl start maltrail-sensor.service
+    ```
+  </Step>
+
+  <Step title="Enable autostart on boot">
+    ```bash
+    sudo systemctl enable maltrail-server.service
+    sudo systemctl enable maltrail-sensor.service
+    ```
+  </Step>
+
+  <Step title="Verify both services are running">
+    ```bash
+    systemctl status maltrail-server.service && systemctl status maltrail-sensor.service
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  `maltrail-sensor.service` can be started without `maltrail-server.service`. This is useful when the server runs on a separate machine in your network. In that case, configure the `LOG_SERVER` option in `maltrail.conf` to point to the remote server's address and UDP port.
+</Note>
+
+## Common management commands
+
+<AccordionGroup>
+  <Accordion title="Start, stop, and restart">
+    ```bash
+    # Start
+    sudo systemctl start maltrail-server.service
+    sudo systemctl start maltrail-sensor.service
+
+    # Stop
+    sudo systemctl stop maltrail-sensor.service
+    sudo systemctl stop maltrail-server.service
+
+    # Restart
+    sudo systemctl restart maltrail-server.service
+    sudo systemctl restart maltrail-sensor.service
+    ```
+  </Accordion>
+
+  <Accordion title="Check service status">
+    ```bash
+    systemctl status maltrail-server.service
+    systemctl status maltrail-sensor.service
+    ```
+  </Accordion>
+
+  <Accordion title="View logs with journalctl">
+    ```bash
+    # Follow live output from the sensor
+    sudo journalctl -u maltrail-sensor.service -f
+
+    # Show last 100 lines from the server
+    sudo journalctl -u maltrail-server.service -n 100
+
+    # Show logs since last boot
+    sudo journalctl -u maltrail-sensor.service -b
+    ```
+  </Accordion>
+
+  <Accordion title="Enable and disable autostart">
+    ```bash
+    # Enable on boot
+    sudo systemctl enable maltrail-server.service
+    sudo systemctl enable maltrail-sensor.service
+
+    # Disable autostart
+    sudo systemctl disable maltrail-sensor.service
+    sudo systemctl disable maltrail-server.service
+    ```
+  </Accordion>
+</AccordionGroup>

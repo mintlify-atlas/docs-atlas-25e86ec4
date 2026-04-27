@@ -1,0 +1,109 @@
+---
+title: "Filter and search events in Maltrail"
+description: "Use the Filter field, tags, user account netmasks, and IP aliases to narrow down and organize events in the Maltrail reporting interface."
+---
+
+Maltrail's reporting interface provides several mechanisms to narrow down the events shown in the event table. The primary tool is the `Filter` field, which performs a real-time text search across displayed threats. Beyond basic filtering, you can use tags to annotate and group threats, configure per-account network filters to restrict visibility to specific IP ranges, and define IP aliases to make source and destination addresses more readable.
+
+## The Filter field
+
+The `Filter` field accepts any text string and immediately filters the event table to show only threats that match. The filter applies across threat data — including trail values, info descriptions, and references — so you can use it to target specific threat types, behaviors, tools, or services.
+
+<Tip>
+  Filtering is case-insensitive and matches partial strings, so `malware` will match threats whose info column contains `malware`, `Malware`, or any related substring.
+</Tip>
+
+### Common filter examples
+
+<CodeGroup>
+
+```text Filter by threat category
+malware
+```
+
+```text Filter by specific malware family
+ramnit
+```
+
+```text Filter by attacker behavior
+ssh attacker
+```
+
+```text Filter by attacker protocol
+rdp attacker
+```
+
+```text Filter by suspicious service usage
+ipinfo
+```
+
+```text Filter by scan type
+web scan
+```
+
+```text Filter by attack technique
+directory traversal
+```
+
+```text Filter by file download type
+direct .exe download
+```
+
+</CodeGroup>
+
+For example, entering `malware` shows all threats linked to malware-related trails (IP addresses, domains, or URLs flagged as malware). Entering `ramnit` narrows this further to only threats associated with the Ramnit malware family, letting you identify all affected internal computers at once.
+
+Entering `ssh attacker` surfaces brute-force attempts against SSH (port 22), while `rdp attacker` shows the same for RDP (port 3389). These filters are particularly useful when reviewing a day with high event counts.
+
+## Tags
+
+The `tags` column in the event table lets you attach arbitrary labels to individual trails. Tags persist across sessions and serve as a flexible annotation system for ongoing investigations.
+
+To add a tag, click the `tags` field on any threat row and type the label you want to assign. You can then enter that tag text into the `Filter` field to retrieve all threats sharing that tag.
+
+Common uses for tags include:
+
+- Marking threats belonging to the same attacker campaign (for example, `campaign-q1`)
+- Labeling threats under investigation (for example, `review`)
+- Grouping threats by affected system or business unit
+
+## Per-account network filters
+
+User accounts in Maltrail can be configured with a `filter_netmask` that restricts which events are visible to that account. This is set in the `USERS` section of `maltrail.conf`.
+
+Each user entry follows this format:
+
+```text maltrail.conf
+username:sha256(password):UID:filter_netmask
+```
+
+For example:
+
+```text maltrail.conf
+local:sha256password:1000:192.168.0.0/16
+```
+
+In this configuration, the user `local` has a UID of 1000 (non-administrative, display-only) and will only see events where the source or destination IP falls within `192.168.0.0/16`. Multiple netmasks can be specified as a comma-delimited list.
+
+<Note>
+  Accounts with a UID below 1000 are administrative and have no network filter restrictions by default. Accounts with a UID of 1000 or higher are non-administrative and limited to display-only access.
+</Note>
+
+## IP aliases
+
+The server configuration supports an `IP_ALIASES` option that maps specific IP addresses to human-readable names. When a mapped IP appears in the `src_ip` or `dst_ip` columns, the alias name is shown instead of the raw address, making it easier to recognize internal infrastructure at a glance.
+
+For example:
+
+```text maltrail.conf
+IP_ALIASES
+    8.8.8.8:google-dns
+    8.8.4.4:google-dns
+    1.1.1.1:cloudflare-dns
+```
+
+With this configuration, events involving `8.8.8.8` will display `google-dns` in the IP columns.
+
+## Searching from the trail column
+
+Hovering over a value in the `trail` column for a few seconds opens an inline searX search frame using the trail value as the query. This provides immediate context — for example, confirming whether an unfamiliar IP is a known mass scanner or whether a suspicious domain has been previously reported — without leaving the interface or manually searching in a new tab.

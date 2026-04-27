@@ -1,0 +1,108 @@
+---
+title: "Navigate the Maltrail reporting interface"
+description: "Learn how to use the Maltrail web reporting interface, from authentication and timeline navigation to reading the event table and working with trails."
+---
+
+The Maltrail reporting interface is a browser-based client that connects to the Maltrail server and presents logged events in a structured, interactive format. It is organized into three main areas: a sliding timeline at the top, summary charts in the middle, and a detailed event table at the bottom.
+
+## Authentication
+
+Access the reporting interface by navigating to `http://127.0.0.1:8338` in your browser (the default address and port). You will be prompted to log in.
+
+<Warning>
+  The default credentials are `admin:changeme!`. Change this immediately by editing the `USERS` section of `maltrail.conf`. Leaving the default password in place exposes your reporting interface to unauthorized access.
+</Warning>
+
+User accounts are defined in the `USERS` section of `maltrail.conf`. Each entry follows the format `username:sha256(password):UID:filter_netmask`. Accounts with a UID below 1000 are administrative; accounts with a UID of 1000 or higher are non-administrative (display-only).
+
+## Timeline
+
+The top section of the interface is a sliding timeline showing up to 4 months of historical event data. It is inactive by default.
+
+To activate the timeline, click the current date label or the calendar icon. Once active, hovering over a date shows a tooltip with the approximate number of events recorded on that day. Clicking a date loads all events for that 24-hour period.
+
+Loading time depends on the number of events and your network connection speed. As a reference, 100,000 events takes approximately 5 seconds to process. An animated loader is displayed across the disabled interface while data is being transferred and processed in your browser.
+
+Use the slider control at the edge of the timeline to navigate to months beyond the visible 4-month window.
+
+## Summary charts
+
+The middle section contains four summary boxes, each presenting a different view of the loaded events. Clicking any box opens a more detailed graph.
+
+| Box | Description |
+|---|---|
+| **Events** | Total event count. A red line represents IP-based events, blue represents DNS-based, and yellow represents URL-based. |
+| **Sources** | Stacked column chart showing event counts for top source IPs, with the total source count at the top. |
+| **Threats** | Pie chart showing top threats by percentage of total events. The gray segment groups all threats individually accounting for less than 1% each. |
+| **Trails** | Pie chart showing top trails by percentage. The gray segment groups all trails individually accounting for less than 1% each. |
+
+## Event table
+
+The bottom section is a paginated table where each row represents a single threat. A threat is uniquely identified by a `(src_ip, trail)` pair, or a `(dst_ip, trail)` pair when the source IP is the same as the trail (as in attacks originating externally).
+
+<AccordionGroup>
+  <Accordion title="threat">
+    A short unique ID for the threat (for example, `85fdb08d`) and a color derived from that ID. The color helps you visually group related rows at a glance.
+  </Accordion>
+  <Accordion title="sensor">
+    The name(s) of the sensor(s) that triggered the event. Useful in deployments with multiple sensors across different network segments.
+  </Accordion>
+  <Accordion title="events">
+    The total number of individual events associated with this threat during the selected 24-hour period.
+  </Accordion>
+  <Accordion title="severity">
+    An evaluated severity rating calculated from the `info` and `reference` columns. Traffic identified as malware-generated is prioritized in the severity calculation.
+  </Accordion>
+  <Accordion title="first_seen">
+    The timestamp of the earliest event for this threat within the selected 24-hour period (for example, `06th 08:21:54`).
+  </Accordion>
+  <Accordion title="last_seen">
+    The timestamp of the most recent event for this threat within the selected 24-hour period (for example, `06th 15:21:23`).
+  </Accordion>
+  <Accordion title="sparkline">
+    A small inline activity graph showing how event frequency changed across the selected period.
+  </Accordion>
+  <Accordion title="src_ip">
+    The source IP address or addresses involved in the threat. Hover over an IP to see a tooltip with reverse DNS and WHOIS information sourced from RIPE.
+  </Accordion>
+  <Accordion title="src_port">
+    The source port or ports associated with the threat's events.
+  </Accordion>
+  <Accordion title="dst_ip">
+    The destination IP address or addresses. Hover to see reverse DNS and WHOIS information from RIPE.
+  </Accordion>
+  <Accordion title="dst_port">
+    The destination port or ports (for example, `80 (HTTP)`).
+  </Accordion>
+  <Accordion title="proto">
+    The network protocol or protocols involved (for example, `TCP`, `UDP`).
+  </Accordion>
+  <Accordion title="trail">
+    The blacklisted or heuristically detected entry that triggered the event. This could be an IP address, domain name, or URL. Hover over the trail value for a few seconds to open a search frame pulling results from searX based on the trail value. Two buttons in the top-right corner of the frame let you open the results in a new tab or close the frame.
+  </Accordion>
+  <Accordion title="info">
+    Additional context about the threat or trail, such as `known attacker` for a blacklisted IP or `ipinfo` for an IP information service commonly contacted by malware at startup.
+  </Accordion>
+  <Accordion title="reference">
+    The source of the blacklisted entry. `(static)` indicates a manually compiled static trail. A feed name like `myip.ms` or `alienvault.com` indicates the dynamic feed that flagged the entry.
+  </Accordion>
+  <Accordion title="tags">
+    User-defined tags for the trail. Tags let you annotate threats and later filter or group them by a shared label. See the Tags section below for details.
+  </Accordion>
+</AccordionGroup>
+
+## Bubble icon (condensed event details)
+
+When multiple events within the same threat differ in values for fields like `src_port`, `dst_port`, or `proto`, those values are condensed behind a bubble icon (ellipsis). This keeps the table readable by avoiding rows with long, unwieldy lists.
+
+Hovering over the bubble icon shows a tooltip previewing the condensed items. Clicking the icon opens a dialog containing all stored items in their full, uncondensed form, which you can copy and paste for further analysis.
+
+## Trail hover and searX search
+
+Hovering over any value in the `trail` column for a few seconds opens an inline frame showing search results from the searX search engine using the trail value as the query. This provides immediate context about the trail — such as whether an IP is a known scanner or a domain is associated with malware — without requiring you to search manually.
+
+The top-right corner of the frame has two buttons: one to open the results in a new browser tab, and one to close the frame. Moving your mouse outside the frame border also closes it.
+
+## Tags
+
+Each row in the event table has a `tags` column. Clicking the field lets you enter arbitrary text tags to annotate the trail associated with that threat. Tags are a practical way to label threats that belong to the same campaign or share a common characteristic (for example, tagging multiple threats with `APT28`). Once tagged, you can filter the event table by tag name to see all matching threats grouped together.

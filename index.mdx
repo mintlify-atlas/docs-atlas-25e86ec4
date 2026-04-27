@@ -1,133 +1,61 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
-icon: 'star'
+title: "Maltrail: Malicious Traffic Detection System"
+description: "Maltrail monitors your network in real time against 100+ threat intelligence feeds and heuristic rules to detect malicious IPs, domains, and URLs."
 ---
 
-## Setting up
+Maltrail is an open-source malicious traffic detection system that passively captures network packets and checks them against curated blacklists and heuristic detection logic. When a threat is detected, events are stored and surfaced through a web-based reporting interface — giving your team clear visibility into what's hitting your network.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get your sensor and server running in minutes on Linux or Docker
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Understand how Sensor, Server, and Client components work together
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Configuration" icon="sliders" href="/configuration/sensor">
+    Tune sensor behavior, feeds, heuristics, and logging options
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Reporting Interface" icon="chart-bar" href="/usage/reporting-interface">
+    Navigate the web UI to investigate threats, filter events, and tag trails
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## How it works
 
-Everything you need to create world-class documentation.
+Maltrail follows a three-component architecture: a **Sensor** captures traffic, a **Server** stores events and serves the web UI, and a **Client** (your browser) renders the reporting dashboard.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+<Steps>
+  <Step title="Deploy the Sensor">
+    Install Maltrail on any Linux machine with network access. The sensor runs with root privileges to capture packets on any interface using `pcapy-ng`.
+  </Step>
+  <Step title="Start the Server">
+    Run `server.py` to start the HTTP reporting server on port 8338. By default, the server co-locates with the sensor and writes logs to `/var/log/maltrail/`.
+  </Step>
+  <Step title="Access the reporting UI">
+    Open `http://<server-ip>:8338` in your browser. Log in and explore the timeline, charts, and event table to investigate detected threats.
+  </Step>
+  <Step title="Tune and integrate">
+    Add custom trail files, configure syslog/Logstash forwarding, and set up fail2ban integration to automate blocking of detected attackers.
+  </Step>
+</Steps>
 
-## Make your content agent ready
+## Key capabilities
 
-Make your docs work for humans and AI agents alike.
+<CardGroup cols={2}>
+  <Card title="100+ threat feeds" icon="shield-halved" href="/configuration/trails">
+    Maltrail pulls from feeds like AbuseIPDB, Emerging Threats, Tor exit nodes, URLhaus, and dozens more — automatically updated daily.
+  </Card>
+  <Card title="Heuristic detection" icon="brain" href="/configuration/sensor">
+    Catch unknown threats via port scan detection, excessive NXDOMAIN queries, DGA-like domain names, and direct executable downloads.
+  </Card>
+  <Card title="Fail2ban integration" icon="ban" href="/operations/fail2ban">
+    Expose today's attacker IPs via the `/fail2ban` endpoint and feed them directly into iptables or ipset for automated blocking.
+  </Card>
+  <Card title="Syslog & Logstash export" icon="arrow-up-right-from-square" href="/operations/integrations">
+    Forward events in CEF format to your SIEM or as JSON to Logstash for centralized log management.
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Prompt component"
-    icon="robot"
-    href="/agent-ready/prompt"
-  >
-    Embed shareable AI prompts readers can copy or open in Cursor.
-  </Card>
-  <Card
-    title="Visibility"
-    icon="eye"
-    href="/agent-ready/visibility"
-  >
-    Show different content to humans and agents reading your docs.
-  </Card>
-  <Card
-    title="Contextual menu"
-    icon="bolt"
-    href="/agent-ready/contextual"
-  >
-    Give readers one-click access to Claude, ChatGPT, Cursor, and more.
-  </Card>
-  <Card
-    title="AI coding tools"
-    icon="wand-magic-sparkles"
-    href="/ai-tools/claude-code"
-  >
-    Set up Claude Code, Cursor, or Windsurf with Mintlify's skill.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Note>
+  Maltrail requires Python 2.6, 2.7, or 3.x on a Unix/BSD system, plus the `pcapy-ng` package for packet capture. The sensor component requires root or `CAP_NET_RAW` privileges.
+</Note>

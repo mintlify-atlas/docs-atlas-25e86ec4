@@ -1,0 +1,81 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "Maltrail",
+  "projectDescription": "A malicious traffic detection system that monitors network traffic against curated blacklists and heuristic rules, alerting on suspicious domains, IPs, and URLs via a web reporting interface.",
+  "theme": "aspen",
+  "primaryColor": "#22bd7a",
+  "lightColor": "#0f0d51",
+  "darkColor": "#cee1df",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/linux",
+              "deployment/docker",
+              "deployment/systemd"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/sensor",
+              "configuration/server",
+              "configuration/trails"
+            ]
+          },
+          {
+            "group": "Using Maltrail",
+            "pages": [
+              "usage/reporting-interface",
+              "usage/filtering-events",
+              "usage/real-life-cases"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/integrations",
+              "operations/fail2ban",
+              "operations/false-positives"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Real-time network traffic monitoring via passive packet capture",
+    "100+ threat intelligence feeds (blacklisted IPs, domains, URLs)",
+    "Heuristic detection for unknown threats (port scans, DNS exhaustion, DGA domains)",
+    "Web-based reporting interface with timeline, charts, and event filtering",
+    "Distributed Sensor → Server architecture supporting multiple sensors",
+    "CEF/Syslog and JSON (Logstash) event forwarding",
+    "Fail2ban and ipset integration for automated IP blocking",
+    "Custom trails support for user-defined threat indicators",
+    "Docker and systemd deployment support"
+  ],
+  "publicApiSurface": [
+    "sensor.py — CLI entry point for the network capture sensor",
+    "server.py — CLI entry point for the reporting HTTP server",
+    "GET /  — Web reporting interface (port 8338)",
+    "GET /trails — Trail definitions endpoint (for UPDATE_SERVER)",
+    "GET /fail2ban — Attacker IP extraction endpoint for firewall integration",
+    "GET /blacklist/<name> — Custom blacklist IP endpoint",
+    "UDP <UDP_ADDRESS>:<UDP_PORT> — Remote log event collection from sensors",
+    "maltrail.conf — Central configuration file for all components",
+    "trails/custom/*.txt — User-defined custom trail files",
+    "trails/feeds/*.py — Pluggable threat intelligence feed modules"
+  ]
+}

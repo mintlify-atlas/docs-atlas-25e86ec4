@@ -1,0 +1,129 @@
+---
+title: "Integrate Maltrail with SIEMs and log platforms"
+description: "Forward Maltrail sensor events to external systems using CEF over UDP for syslog, JSON for Logstash, or a distributed multi-sensor server setup."
+---
+
+Maltrail can forward every detected event to external log collectors and SIEM platforms without any additional agents. Two built-in forwarding modes are available—CEF for syslog-compatible receivers and JSON for Logstash-compatible receivers—and a distributed architecture lets you aggregate events from many sensors into a single central server.
+
+## Syslog / CEF integration
+
+Set `SYSLOG_SERVER` in the `[Sensor]` section of `maltrail.conf` to send events in **Common Event Format (CEF)** over UDP to any syslog receiver:
+
+```ini maltrail.conf
+# Remote address to send Syslog events
+SYSLOG_SERVER 192.168.2.107:514
+```
+
+Events are formatted using the following template (from `core/settings.py`):
+
+```
+{syslog_time} {host} CEF:0|{device_vendor}|{device_product}|{device_version}|{signature_id}|{name}|{severity}|{extension}
+```
+
+**Example CEF event:**
+
+```
+Dec 24 15:05:55 beast CEF:0|Maltrail|sensor|0.27.68|2020-12-24|andromeda (malware)|2|src=192.168.5.137 spt=60453 dst=8.8.8.8 dpt=53 trail=morphed.ru ref=(static)
+```
+
+The `severity` field in CEF maps as follows:
+
+| Value | Severity |
+|-------|----------|
+| `0`   | low      |
+| `1`   | medium   |
+| `2`   | high     |
+
+### Controlling remote severity
+
+`REMOTE_SEVERITY_REGEX` determines how the severity level is calculated when forwarding events to `SYSLOG_SERVER` or `LOGSTASH_SERVER`. The regex uses named groups `(?P<high>...)`, `(?P<medium>...)`, and `(?P<low>...)`.
+
+Default value from `maltrail.conf`:
+
+```ini maltrail.conf
+REMOTE_SEVERITY_REGEX (?P<high>(remote )?custom\)|malwaredomainlist|iot-malware|malware(?! (distribution|site))|adversary|ransomware)|(?P<medium>potential malware site|malware distribution)|(?P<low>mass scanner|reputation|attacker|spammer|compromised|crawler|scanning)
+```
+
+## Logstash / JSON integration
+
+Set `LOGSTASH_SERVER` in the `[Sensor]` section to send events as JSON over UDP to any Logstash-compatible receiver:
+
+```ini maltrail.conf
+# Remote address to send JSON events (e.g. Logstash)
+LOGSTASH_SERVER 192.168.2.107:5000
+```
+
+**Example JSON event:**
+
+```json
+{
+  "timestamp": 1608818692,
+  "sensor": "beast",
+  "severity": "high",
+  "src_ip": "192.168.5.137",
+  "src_port": 48949,
+  "dst_ip": "8.8.8.8",
+  "dst_port": 53,
+  "proto": "UDP",
+  "type": "DNS",
+  "trail": "morphed.ru",
+  "info": "andromeda (malware)",
+  "reference": "(static)"
+}
+```
+
+## Distributed multi-sensor setup
+
+In a multi-sensor deployment, remote sensors send log entries over UDP to a central server instead of writing locally. Configure the **server** to accept incoming UDP log entries:
+
+```ini maltrail.conf (server)
+# Listen address of (log collecting) UDP server
+UDP_ADDRESS 0.0.0.0
+
+# Listen port of (log collecting) UDP server
+UDP_PORT 8337
+```
+
+Then configure each **remote sensor** to forward to that server:
+
+```ini maltrail.conf (each sensor)
+# Remote Maltrail server instance to send log entries
+LOG_SERVER 192.168.2.107:8337
+```
+
+Multiple sensors can point to the same `LOG_SERVER`. All events are consolidated in the server's `LOG_DIR` and become visible through the single reporting interface.
+
+<Note>
+  If `LOG_SERVER` is set and you want to suppress local log storage entirely on the sensor, set `DISABLE_LOCAL_LOG_STORAGE true` in the sensor's configuration.
+</Note>
+
+## Third-party integrations
+
+Beyond the built-in forwarding modes, the Maltrail trail data and event stream are consumed by several external platforms:
+
+<CardGroup cols={2}>
+  <Card title="Maltrail Add-on for Splunk" icon="chart-bar" href="https://splunkbase.splunk.com/app/7211">
+    Splunkbase app (ID 7211) for ingesting Maltrail events directly into Splunk.
+  </Card>
+  <Card title="Wazuh decoder and rules" icon="shield" href="https://github.com/MikhailKasimov/maltrail-wazuh-decoder-and-rules">
+    Community-maintained Maltrail decoder and detection rules for Wazuh SIEM.
+  </Card>
+  <Card title="Palo Alto Cortex XSOAR" icon="plug" href="https://xsoar.pan.dev/docs/reference/integrations/github-maltrail-feed">
+    Connector that pulls Maltrail trail feeds into Cortex XSOAR playbooks.
+  </Card>
+  <Card title="D4 Project" icon="share-nodes" href="https://www.d4-project.org/2019/09/25/maltrail-integration.html">
+    CIRCL's D4 passive DNS and traffic analysis framework with Maltrail integration.
+  </Card>
+  <Card title="OPNSense Gateway Plugin" icon="network-wired" href="https://github.com/opnsense/plugins/pull/1257">
+    Native OPNsense plugin for running Maltrail as a gateway-level sensor.
+  </Card>
+  <Card title="FreeBSD Port" icon="server" href="https://www.freshports.org/security/maltrail">
+    Official FreeBSD port for installing Maltrail from the ports tree.
+  </Card>
+  <Card title="BlackArch Linux" icon="terminal" href="https://github.com/BlackArch/blackarch/blob/master/packages/maltrail/PKGBUILD">
+    Maltrail is packaged in the BlackArch Linux security distribution.
+  </Card>
+  <Card title="Trails-only consumers" icon="list">
+    NextDNS, Mobile-Security-Framework-MobSF, pfBlockerNG, and Sansec eComscan all consume Maltrail's trail lists for DNS or file-based blocking.
+  </Card>
+</CardGroup>
